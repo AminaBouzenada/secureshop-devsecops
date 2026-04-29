@@ -1,0 +1,61 @@
+name: Full DevSecOps Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  sast:
+    name: Static Analysis
+    uses: ./.github/workflows/sast.yml
+
+  sca:
+    name: Dependency Scanning
+    uses: ./.github/workflows/sca.yml
+
+  secrets:
+    name: Secrets Detection
+    uses: ./.github/workflows/secrets-scan.yml
+
+  build:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    needs: [sast, sca, secrets]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Build all services
+        run: |
+          docker-compose build
+      
+      - name: Run tests
+        run: |
+          echo "Running unit tests..."
+          # Add your test commands here
+
+  container-scan:
+    name: Container Security
+    needs: build
+    uses: ./.github/workflows/container-scan.yml
+
+  iac-scan:
+    name: IaC Security
+    uses: ./.github/workflows/iac-scan.yml
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build, container-scan, iac-scan]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Deploy to staging
+        run: |
+          echo "Deploying to staging environment..."
+          # Add deployment commands
+
+  dast:
+    name: Dynamic Security Testing
+    needs: deploy-staging
+    uses: ./.github/workflows/dast.yml
