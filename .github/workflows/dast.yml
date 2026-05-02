@@ -15,6 +15,7 @@ jobs:
   zap-scan:
     name: OWASP ZAP Scan
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -37,27 +38,41 @@ jobs:
           done
         continue-on-error: true
 
-      - name: ZAP Baseline Scan - API Gateway
-        uses: zaproxy/action-baseline@v0.10.0
+      # -----------------------------
+      # ZAP SCANS (FIXED)
+      # -----------------------------
+
+      - name: ZAP - API Gateway
+        uses: zaproxy/action-baseline@v0.12.0
         with:
           target: 'http://localhost'
+          report_html: report_gateway.html
+          report_json: report_gateway.json
           allow_issue_writing: false
           cmd_options: '-a'
         continue-on-error: true
 
-      - name: ZAP Baseline Scan - User Service
-        uses: zaproxy/action-baseline@v0.10.0
+      - name: ZAP - User Service
+        uses: zaproxy/action-baseline@v0.12.0
         with:
           target: 'http://localhost:8001'
+          report_html: report_user.html
+          report_json: report_user.json
           allow_issue_writing: false
         continue-on-error: true
 
-      - name: ZAP Baseline Scan - Product Service
-        uses: zaproxy/action-baseline@v0.10.0
+      - name: ZAP - Product Service
+        uses: zaproxy/action-baseline@v0.12.0
         with:
           target: 'http://localhost:8002'
+          report_html: report_product.html
+          report_json: report_product.json
           allow_issue_writing: false
         continue-on-error: true
+
+      # -----------------------------
+      # UPLOAD REPORTS (FIXED)
+      # -----------------------------
 
       - name: Upload ZAP Reports
         uses: actions/upload-artifact@v4
@@ -65,8 +80,8 @@ jobs:
         with:
           name: zap-reports
           path: |
-            report_html.html
-            report_json.json
+            report_*.html
+            report_*.json
           if-no-files-found: warn
 
       - name: Stop services
