@@ -21,7 +21,7 @@ jobs:
 
       - name: Start services with Docker Compose
         run: |
-          docker-compose up -d --build
+          docker compose up -d --build
           echo "Waiting for all services to be ready..."
           sleep 90
 
@@ -71,4 +71,4 @@ jobs:
 
       - name: Stop services
         if: always()
-        run: docker-compose down -v
+        run: docker compose down -v
