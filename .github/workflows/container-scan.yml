@@ -8,6 +8,11 @@ on:
   workflow_dispatch:
   workflow_call:
 
+permissions:
+  security-events: write
+  actions: read
+  contents: read
+
 jobs:
   trivy-container-scan:
     name: Trivy Container Scan
@@ -43,6 +48,7 @@ jobs:
         with:
           sarif_file: 'trivy-${{ matrix.service }}.sarif'
           category: 'trivy-${{ matrix.service }}'
+        continue-on-error: true
 
   grype-scan:
     name: Grype Container Scan
@@ -64,18 +70,18 @@ jobs:
         run: docker build -t ${{ matrix.service }}:latest ./services/${{ matrix.service }}
 
       - name: Run Grype
+        id: grype
         uses: anchore/scan-action@v3
         with:
           image: '${{ matrix.service }}:latest'
           fail-build: false
           severity-cutoff: high
-          output-file: grype-${{ matrix.service }}.sarif
-          output-format: sarif
         continue-on-error: true
 
       - name: Upload Grype results
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          sarif_file: grype-${{ matrix.service }}.sarif
+          sarif_file: ${{ steps.grype.outputs.sarif }}
           category: grype-${{ matrix.service }}
+        continue-on-error: true

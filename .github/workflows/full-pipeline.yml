@@ -5,28 +5,57 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  security-events: write
+  actions: read
+  contents: read
+
 jobs:
   sast:
     name: SAST
     uses: ./.github/workflows/sast.yml
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
 
   sca:
     name: SCA
     uses: ./.github/workflows/sca.yml
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
 
   secrets:
     name: Secrets Detection
     uses: ./.github/workflows/secrets-scan.yml
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
 
   container:
     name: Container Scanning
     uses: ./.github/workflows/container-scan.yml
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
 
   iac:
     name: IaC Scanning
     uses: ./.github/workflows/iac-scan.yml
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
 
   dast:
     name: DAST
     uses: ./.github/workflows/dast.yml
-    needs: [sast, sca, secrets]  # Run DAST after static checks pass
+    needs: [sast, sca, secrets]
+    permissions:
+      security-events: write
+      actions: read
+      contents: read

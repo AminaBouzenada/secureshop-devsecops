@@ -8,6 +8,11 @@ on:
   workflow_dispatch:
   workflow_call:
 
+permissions:
+  security-events: write
+  actions: read
+  contents: read
+
 jobs:
   bandit-python:
     name: Bandit Python SAST
@@ -32,7 +37,7 @@ jobs:
             fi
           done
 
-      - name: Upload Bandit SARIF results
+      - name: Upload Bandit SARIF - user-service
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
@@ -40,7 +45,7 @@ jobs:
           category: bandit-user-service
         continue-on-error: true
 
-      - name: Upload Order Service SARIF
+      - name: Upload Bandit SARIF - order-service
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
@@ -51,11 +56,16 @@ jobs:
   semgrep:
     name: Semgrep Multi-Language SAST
     runs-on: ubuntu-latest
-    container:
-      image: returntocorp/semgrep
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Install Semgrep
+        run: pip install semgrep
 
       - name: Run Semgrep
         run: semgrep scan --config auto --sarif --output semgrep.sarif || true
@@ -66,6 +76,7 @@ jobs:
         with:
           sarif_file: semgrep.sarif
           category: semgrep
+        continue-on-error: true
 
   spotbugs-java:
     name: SpotBugs Java SAST
@@ -84,17 +95,20 @@ jobs:
         run: |
           cd services/product-service
           mvn clean compile spotbugs:spotbugs -DskipTests || true
+        continue-on-error: true
 
       - name: Build Payment Service with SpotBugs
         run: |
           cd services/payment-service
           mvn clean compile spotbugs:spotbugs -DskipTests || true
+        continue-on-error: true
 
       - name: Upload SpotBugs Results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: spotbugs-results
           path: |
             services/product-service/target/spotbugsXml.xml
             services/payment-service/target/spotbugsXml.xml
+          if-no-files-found: warn
