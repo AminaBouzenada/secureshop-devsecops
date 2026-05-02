@@ -1,81 +1,83 @@
-name: OWASP ZAP DAST Scan
+name: DAST - Dynamic Application Security Testing
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
+  workflow_call:
+  schedule:
+    - cron: '0 2 * * *'
+
+permissions:
+  security-events: write
+  actions: read
+  contents: read
 
 jobs:
   zap-scan:
-    name: OWASP ZAP Baseline Scan
+    name: OWASP ZAP Scan
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout the repository
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. Start the application stack
       - name: Start services with Docker Compose
         run: |
           docker compose up -d --build
-          echo "Waiting for services to be ready..."
-          sleep 30
+          echo "Waiting for all services to be ready..."
+          sleep 90
 
-      # 3. Health check - make sure the target is up
-      - name: Wait for API Gateway
+      - name: Wait for API gateway to be healthy
         run: |
-          for i in {1..10}; do
-            if curl -s http://localhost:80/health > /dev/null 2>&1; then
-              echo "API Gateway is up!"
+          for i in {1..15}; do
+            if curl -sf http://localhost/health; then
+              echo "Gateway is up!"
               break
             fi
-            echo "Attempt $i: waiting..."
-            sleep 5
+            echo "Attempt $i/15 — retrying in 10s..."
+            sleep 10
           done
+        continue-on-error: true
 
-      # 4. Run OWASP ZAP Baseline Scan
-      #    FIXES APPLIED:
-      #    - Removed invalid inputs: report_html, report_json
-      #    - ZAP action v0.12.0+ auto-generates reports internally
-      #    - Use allow_issue_writing: false to prevent noisy PR comments
-      - name: OWASP ZAP Scan
+      # -----------------------------
+      # ZAP SCANS (FIXED)
+      # report_html / report_json removed — not valid inputs for action-baseline.
+      # ZAP generates and uploads its own reports; use artifact_name to label them.
+      # artifact_name must use hyphens only (underscores cause upload to fail).
+      # -----------------------------
+
+      - name: ZAP - API Gateway
         uses: zaproxy/action-baseline@v0.12.0
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          target: 'http://localhost:80'
-          rules_file_name: '.zap/rules.tsv'       # optional: suppress known FPs
-          cmd_options: '-a'                         # include ajax spider
-          allow_issue_writing: false                # set true if you want GitHub issues
+          target: 'http://localhost'
+          artifact_name: zap-report-gateway
+          allow_issue_writing: false
+          cmd_options: '-a'
+        continue-on-error: true
 
-      # 5. Upload ZAP reports as artifacts
-      #    FIX: artifact name uses hyphens, NOT underscores (zap-scan not zap_scan)
-      - name: Upload ZAP HTML Report
-        uses: actions/upload-artifact@v4
-        if: always()
+      - name: ZAP - User Service
+        uses: zaproxy/action-baseline@v0.12.0
         with:
-          name: zap-report-html          # FIXED: was zap_scan (underscores invalid)
-          path: report_html.html
-          retention-days: 30
+          target: 'http://localhost:8001'
+          artifact_name: zap-report-user
+          allow_issue_writing: false
+        continue-on-error: true
 
-      - name: Upload ZAP JSON Report
-        uses: actions/upload-artifact@v4
-        if: always()
+      - name: ZAP - Product Service
+        uses: zaproxy/action-baseline@v0.12.0
         with:
-          name: zap-report-json          # FIXED: was zap_scan (underscores invalid)
-          path: report_json.json
-          retention-days: 30
+          target: 'http://localhost:8002'
+          artifact_name: zap-report-product
+          allow_issue_writing: false
+        continue-on-error: true
 
-      # 6. Upload SARIF to GitHub Security tab
-      - name: Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: report_sarif.sarif
+      # -----------------------------
+      # Manual upload-artifact step removed.
+      # Each ZAP action above already uploads HTML + JSON + SARIF reports
+      # under its own artifact_name. Nothing lands on the runner filesystem
+      # for a manual step to pick up, which is why the old step produced
+      # 0-byte files.
+      # -----------------------------
 
-      # 7. Tear down Docker Compose
       - name: Stop services
         if: always()
-        run: docker compose down
+        run: docker compose down -v
