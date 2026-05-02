@@ -1,15 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from database import init_db
 from routes import router
-import os
 
-app = FastAPI(
-    title="User Service",
-    description="Authentication and User Management Service",
-    version="1.0.0"
-)
+app = FastAPI(title="User Service", version="1.0.0")
 
-# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,16 +13,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+def startup():
+    init_db()
+
 app.include_router(router, prefix="/api/v1", tags=["users"])
 
 @app.get("/health")
-def health_check():
-    return {
-        "status": "healthy",
-        "service": "user-service",
-        "version": "1.0.0"
-    }
-
-@app.get("/")
-def root():
-    return {"message": "User Service API"}
+def health():
+    return {"status": "healthy", "service": "user-service", "version": "1.0.0"}

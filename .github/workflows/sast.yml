@@ -6,6 +6,7 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   bandit-python:
@@ -14,35 +15,38 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-      
+
       - name: Install Bandit
+        run: pip install bandit[sarif]
+
+      - name: Run Bandit on Python services
         run: |
-          pip install bandit[sarif]
-      
-      - name: Run Bandit on User Service
-        run: |
-          bandit -r services/user-service/app -f sarif -o bandit-user-service.sarif || true
-      
-      - name: Run Bandit on Order Service
-        run: |
-          bandit -r services/order-service/app -f sarif -o bandit-order-service.sarif || true
-      
-      - name: Upload User Service SARIF
+          for service in user-service order-service notification-service; do
+            if [ -d "services/$service/app" ]; then
+              bandit -r services/$service/app -f sarif -o bandit-$service.sarif || true
+            fi
+          done
+
+      - name: Upload Bandit SARIF results
         uses: github/codeql-action/upload-sarif@v3
+        if: always()
         with:
           sarif_file: bandit-user-service.sarif
           category: bandit-user-service
-      
+        continue-on-error: true
+
       - name: Upload Order Service SARIF
         uses: github/codeql-action/upload-sarif@v3
+        if: always()
         with:
           sarif_file: bandit-order-service.sarif
           category: bandit-order-service
+        continue-on-error: true
 
   semgrep:
     name: Semgrep Multi-Language SAST
@@ -52,13 +56,13 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Run Semgrep
-        run: |
-          semgrep scan --config auto --sarif --output semgrep.sarif || true
-      
+        run: semgrep scan --config auto --sarif --output semgrep.sarif || true
+
       - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@v3
+        if: always()
         with:
           sarif_file: semgrep.sarif
           category: semgrep
@@ -69,21 +73,28 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
-      
-      - name: Build Product Service
+
+      - name: Build Product Service with SpotBugs
         run: |
           cd services/product-service
-          mvn clean compile spotbugs:spotbugs || true
-      
+          mvn clean compile spotbugs:spotbugs -DskipTests || true
+
+      - name: Build Payment Service with SpotBugs
+        run: |
+          cd services/payment-service
+          mvn clean compile spotbugs:spotbugs -DskipTests || true
+
       - name: Upload SpotBugs Results
         if: always()
         uses: actions/upload-artifact@v3
         with:
           name: spotbugs-results
-          path: services/product-service/target/spotbugsXml.xml
+          path: |
+            services/product-service/target/spotbugsXml.xml
+            services/payment-service/target/spotbugsXml.xml

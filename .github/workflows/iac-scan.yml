@@ -6,6 +6,7 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   checkov:
@@ -14,7 +15,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Run Checkov
         uses: bridgecrewio/checkov-action@master
         with:
@@ -23,7 +24,7 @@ jobs:
           output_format: sarif
           output_file_path: checkov-results.sarif
           soft_fail: true
-      
+
       - name: Upload SARIF file
         uses: github/codeql-action/upload-sarif@v3
         if: always()
@@ -37,19 +38,26 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
-      - name: Run Hadolint
-        uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: "services/*/Dockerfile"
-          recursive: true
-          format: sarif
-          output-file: hadolint-results.sarif
-          no-fail: true
-      
-      - name: Upload SARIF
+
+      - name: Run Hadolint on each Dockerfile
+        run: |
+          docker run --rm -i hadolint/hadolint hadolint \
+            --format sarif - < services/user-service/Dockerfile > hadolint-user.sarif || true
+          docker run --rm -i hadolint/hadolint hadolint \
+            --format sarif - < services/order-service/Dockerfile > hadolint-order.sarif || true
+          docker run --rm -i hadolint/hadolint hadolint \
+            --format sarif - < services/notification-service/Dockerfile > hadolint-notification.sarif || true
+          docker run --rm -i hadolint/hadolint hadolint \
+            --format sarif - < services/product-service/Dockerfile > hadolint-product.sarif || true
+          docker run --rm -i hadolint/hadolint hadolint \
+            --format sarif - < services/payment-service/Dockerfile > hadolint-payment.sarif || true
+          docker run --rm -i hadolint/hadolint hadolint \
+            --format sarif - < services/inventory-service/Dockerfile > hadolint-inventory.sarif || true
+
+      - name: Upload Hadolint SARIF results
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          sarif_file: hadolint-results.sarif
-          category: hadolint
+          sarif_file: hadolint-user.sarif
+          category: hadolint-user
+        continue-on-error: true

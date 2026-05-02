@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+
   nginx:
     image: nginx:alpine
     container_name: api-gateway
@@ -27,6 +28,13 @@ services:
       - "8001:8001"
     environment:
       - JWT_SECRET=${JWT_SECRET:-dev-secret-key-12345}
+      - DB_HOST=user-db
+      - DB_PORT=5432
+      - DB_NAME=userdb
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+    depends_on:
+      - user-db
     networks:
       - secureshop-network
     healthcheck:
@@ -42,6 +50,14 @@ services:
     container_name: product-service
     ports:
       - "8002:8002"
+    environment:
+      - DB_HOST=product-db
+      - DB_PORT=5432
+      - DB_NAME=productdb
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+    depends_on:
+      - product-db
     networks:
       - secureshop-network
     healthcheck:
@@ -57,12 +73,18 @@ services:
     container_name: order-service
     ports:
       - "8003:8003"
-    depends_on:
-      - rabbitmq
     environment:
+      - DB_HOST=order-db
+      - DB_PORT=5432
+      - DB_NAME=orderdb
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
       - RABBITMQ_HOST=rabbitmq
       - RABBITMQ_USER=${RABBITMQ_USER:-guest}
       - RABBITMQ_PASS=${RABBITMQ_PASS:-guest}
+    depends_on:
+      - order-db
+      - rabbitmq
     networks:
       - secureshop-network
 
@@ -73,6 +95,14 @@ services:
     container_name: payment-service
     ports:
       - "8004:8004"
+    environment:
+      - DB_HOST=payment-db
+      - DB_PORT=5432
+      - DB_NAME=paymentdb
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+    depends_on:
+      - payment-db
     networks:
       - secureshop-network
 
@@ -83,10 +113,12 @@ services:
     container_name: notification-service
     ports:
       - "8005:8005"
-    depends_on:
-      - rabbitmq
     environment:
       - RABBITMQ_HOST=rabbitmq
+      - FLASK_ENV=development
+      - FLASK_APP=app.py
+    depends_on:
+      - rabbitmq
     networks:
       - secureshop-network
 
@@ -97,6 +129,14 @@ services:
     container_name: inventory-service
     ports:
       - "8006:8006"
+    environment:
+      - DB_HOST=inventory-db
+      - DB_PORT=5432
+      - DB_NAME=inventorydb
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+    depends_on:
+      - inventory-db
     networks:
       - secureshop-network
 
@@ -116,9 +156,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-  networks:
-    secureshop-network:
-      driver: bridge
+
   user-db:
     image: postgres:15
     container_name: user-db
@@ -188,6 +226,10 @@ services:
       - inventory_db_data:/var/lib/postgresql/data
     networks:
       - secureshop-network
+
+networks:
+  secureshop-network:
+    driver: bridge
 
 volumes:
   user_db_data:

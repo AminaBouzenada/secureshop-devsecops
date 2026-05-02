@@ -8,6 +8,7 @@ on:
   schedule:
     - cron: '0 0 * * 0'  # Weekly on Sunday
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   dependency-check:
@@ -16,7 +17,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Run Dependency-Check
         uses: dependency-check/Dependency-Check_Action@main
         with:
@@ -26,9 +27,10 @@ jobs:
           args: >
             --enableRetired
             --enableExperimental
-      
+
       - name: Upload Results
         uses: actions/upload-artifact@v3
+        if: always()
         with:
           name: dependency-check-report
           path: reports/
@@ -39,7 +41,7 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Run Trivy vulnerability scanner in fs mode
         uses: aquasecurity/trivy-action@master
         with:
@@ -48,9 +50,10 @@ jobs:
           format: 'sarif'
           output: 'trivy-sca-results.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM'
-      
+
       - name: Upload Trivy results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
+        if: always()
         with:
           sarif_file: 'trivy-sca-results.sarif'
           category: 'trivy-sca'
