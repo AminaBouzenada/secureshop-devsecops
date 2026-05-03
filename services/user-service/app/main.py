@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from database import init_db
-from routes import router
+from database import init_db        
+from .routes import router
 
 app = FastAPI(title="User Service", version="1.0.0")
 
