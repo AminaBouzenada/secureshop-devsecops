@@ -39,49 +39,62 @@ jobs:
         continue-on-error: true
 
       # -----------------------------
-      # ZAP SCANS with manual Docker execution
-      # This bypasses the artifact upload issues in the action
+      # Create directory for ZAP reports
+      # -----------------------------
+      - name: Create ZAP reports directory
+        run: mkdir -p zap-reports
+
+      # -----------------------------
+      # ZAP SCANS with corrected volume mounts
+      # Reports are saved to ./zap-reports/ on the host
       # -----------------------------
 
       - name: ZAP - API Gateway
         run: |
           docker run --network host \
-            -v $(pwd):/zap/wrk/:rw \
+            -v $(pwd)/zap-reports:/zap/wrk/:rw \
             -t ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
             -t http://localhost \
-            -r zap-gateway-report.html \
-            -J zap-gateway-report.json \
+            -r gateway-report.html \
+            -J gateway-report.json \
             -a || true
 
       - name: ZAP - User Service
         run: |
           docker run --network host \
-            -v $(pwd):/zap/wrk/:rw \
+            -v $(pwd)/zap-reports:/zap/wrk/:rw \
             -t ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
             -t http://localhost:8001 \
-            -r zap-user-report.html \
-            -J zap-user-report.json || true
+            -r user-report.html \
+            -J user-report.json || true
 
       - name: ZAP - Product Service
         run: |
           docker run --network host \
-            -v $(pwd):/zap/wrk/:rw \
+            -v $(pwd)/zap-reports:/zap/wrk/:rw \
             -t ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
             -t http://localhost:8002 \
-            -r zap-product-report.html \
-            -J zap-product-report.json || true
+            -r product-report.html \
+            -J product-report.json || true
+
+      # -----------------------------
+      # Verify reports were created
+      # -----------------------------
+      - name: List generated reports
+        if: always()
+        run: |
+          echo "Contents of zap-reports directory:"
+          ls -lah zap-reports/
 
       - name: Upload ZAP Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: zap-reports
-          path: |
-            zap-*-report.html
-            zap-*-report.json
+          path: zap-reports/
           retention-days: 30
 
       - name: Stop services
