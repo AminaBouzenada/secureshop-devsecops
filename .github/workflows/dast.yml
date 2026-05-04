@@ -40,16 +40,15 @@ jobs:
 
       # -----------------------------
       # ZAP SCANS (FIXED)
-      # report_html / report_json removed — not valid inputs for action-baseline.
-      # ZAP generates and uploads its own reports; use artifact_name to label them.
-      # artifact_name must use hyphens only (underscores cause upload to fail).
+      # - Changed artifact_name to use hyphens only (no underscores)
+      # - artifact names: zap-gateway, zap-user, zap-product
       # -----------------------------
 
       - name: ZAP - API Gateway
         uses: zaproxy/action-baseline@v0.12.0
         with:
           target: 'http://localhost'
-          artifact_name: zap-report-gateway
+          artifact_name: zap-gateway
           allow_issue_writing: false
           cmd_options: '-a'
         continue-on-error: true
@@ -58,7 +57,7 @@ jobs:
         uses: zaproxy/action-baseline@v0.12.0
         with:
           target: 'http://localhost:8001'
-          artifact_name: zap-report-user
+          artifact_name: zap-user
           allow_issue_writing: false
         continue-on-error: true
 
@@ -66,17 +65,9 @@ jobs:
         uses: zaproxy/action-baseline@v0.12.0
         with:
           target: 'http://localhost:8002'
-          artifact_name: zap-report-product
+          artifact_name: zap-product
           allow_issue_writing: false
         continue-on-error: true
-
-      # -----------------------------
-      # Manual upload-artifact step removed.
-      # Each ZAP action above already uploads HTML + JSON + SARIF reports
-      # under its own artifact_name. Nothing lands on the runner filesystem
-      # for a manual step to pick up, which is why the old step produced
-      # 0-byte files.
-      # -----------------------------
 
       - name: Stop services
         if: always()
