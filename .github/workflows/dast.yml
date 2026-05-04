@@ -38,63 +38,75 @@ jobs:
           done
         continue-on-error: true
 
-      # -----------------------------
-      # Create directory for ZAP reports
-      # -----------------------------
+      # Get the Docker network name
+      - name: Get Docker network
+        id: network
+        run: |
+          NETWORK=$(docker network ls --filter "name=$(basename $(pwd))" --format "{{.Name}}" | head -n 1)
+          echo "network=$NETWORK" >> $GITHUB_OUTPUT
+          echo "Using network: $NETWORK"
+
+      # Create reports directory with proper permissions
       - name: Create ZAP reports directory
-        run: mkdir -p zap-reports
+        run: |
+          mkdir -p ${{ github.workspace }}/zap-reports
+          chmod 777 ${{ github.workspace }}/zap-reports
 
-      # -----------------------------
-      # ZAP SCANS with corrected volume mounts
-      # Reports are saved to ./zap-reports/ on the host
-      # -----------------------------
-
+      # ZAP scans with user mapping to fix permissions
       - name: ZAP - API Gateway
         run: |
-          docker run --network host \
-            -v $(pwd)/zap-reports:/zap/wrk/:rw \
+          docker run --rm \
+            --network ${{ steps.network.outputs.network }} \
+            -v ${{ github.workspace }}/zap-reports:/zap/wrk/:rw \
+            --user $(id -u):$(id -g) \
             -t ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
-            -t http://localhost \
+            -t http://gateway:80 \
             -r gateway-report.html \
             -J gateway-report.json \
+            -w gateway-report.md \
             -a || true
 
       - name: ZAP - User Service
         run: |
-          docker run --network host \
-            -v $(pwd)/zap-reports:/zap/wrk/:rw \
+          docker run --rm \
+            --network ${{ steps.network.outputs.network }} \
+            -v ${{ github.workspace }}/zap-reports:/zap/wrk/:rw \
+            --user $(id -u):$(id -g) \
             -t ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
-            -t http://localhost:8001 \
+            -t http://user-service:8001 \
             -r user-report.html \
-            -J user-report.json || true
+            -J user-report.json \
+            -w user-report.md || true
 
       - name: ZAP - Product Service
         run: |
-          docker run --network host \
-            -v $(pwd)/zap-reports:/zap/wrk/:rw \
+          docker run --rm \
+            --network ${{ steps.network.outputs.network }} \
+            -v ${{ github.workspace }}/zap-reports:/zap/wrk/:rw \
+            --user $(id -u):$(id -g) \
             -t ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
-            -t http://localhost:8002 \
+            -t http://product-service:8002 \
             -r product-report.html \
-            -J product-report.json || true
+            -J product-report.json \
+            -w product-report.md || true
 
-      # -----------------------------
       # Verify reports were created
-      # -----------------------------
       - name: List generated reports
         if: always()
         run: |
           echo "Contents of zap-reports directory:"
-          ls -lah zap-reports/
+          ls -lah ${{ github.workspace }}/zap-reports/ || echo "Directory not found or empty"
 
       - name: Upload ZAP Reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: zap-reports
-          path: zap-reports/
+          path: ${{ github.workspace }}/zap-reports/
+          if-no-files-found: warn
           retention-days: 30
 
       - name: Stop services
