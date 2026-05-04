@@ -26,19 +26,26 @@ jobs:
           echo "Waiting for all services to be ready..."
           sleep 90
 
+      - name: Verify services are running
+        run: |
+          echo "=== Docker Compose Services ==="
+          docker compose ps
+          echo ""
+          echo "=== Docker Networks ==="
+          docker network ls
+
       - name: Wait for API gateway to be healthy
         run: |
           for i in {1..15}; do
             if curl -sf http://localhost/health; then
-              echo "Gateway is up!"
+              echo "✅ Gateway is up!"
+              curl -s http://localhost/health | jq '.' || true
               break
             fi
             echo "Attempt $i/15 — retrying in 10s..."
             sleep 10
           done
-        continue-on-error: true
 
-      # Get the Docker network name
       - name: Get Docker network
         id: network
         run: |
@@ -46,26 +53,55 @@ jobs:
           echo "network=$NETWORK" >> $GITHUB_OUTPUT
           echo "Using network: $NETWORK"
 
-      # Create reports directory with proper permissions
       - name: Create ZAP reports directory
         run: |
           mkdir -p ${{ github.workspace }}/zap-reports
           chmod 777 ${{ github.workspace }}/zap-reports
 
-      # ZAP scans with user mapping to fix permissions
-      - name: ZAP - API Gateway
+      - name: Test ZAP connectivity to services
         run: |
+          echo "=== Testing connectivity from ZAP container ==="
+          
+          echo "Gateway:"
+          docker run --rm \
+            --network ${{ steps.network.outputs.network }} \
+            ghcr.io/zaproxy/zaproxy:stable \
+            curl -v http://gateway:80/health 2>&1 || echo "❌ Gateway unreachable"
+          
+          echo ""
+          echo "User Service:"
+          docker run --rm \
+            --network ${{ steps.network.outputs.network }} \
+            ghcr.io/zaproxy/zaproxy:stable \
+            curl -v http://user-service:8001/health 2>&1 || echo "❌ User service unreachable"
+          
+          echo ""
+          echo "Product Service:"
+          docker run --rm \
+            --network ${{ steps.network.outputs.network }} \
+            ghcr.io/zaproxy/zaproxy:stable \
+            curl -v http://product-service:8002/health 2>&1 || echo "❌ Product service unreachable"
+
+      - name: ZAP - API Gateway
+        continue-on-error: true
+        run: |
+          echo "🔍 Starting ZAP scan for Gateway..."
           docker run --rm \
             --network ${{ steps.network.outputs.network }} \
             -v ${{ github.workspace }}/zap-reports:/zap/wrk/:rw \
-            --user $(id -u):$(id -g) \
+            -u root \
             -t ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
             -t http://gateway:80 \
             -r gateway-report.html \
             -J gateway-report.json \
             -w gateway-report.md \
-            -a || true
+            -d /zap/wrk \
+            -a 2>&1 | tee ${{ github.workspace }}/zap-reports/gateway-scan.log
+          
+          echo ""
+          echo "📁 Reports generated:"
+          ls -lah ${{ github.workspace }}/zap-reports/gateway* || echo "No gateway reports found"
 
       - name: Display Gateway Scan Results
         if: always()
@@ -75,21 +111,26 @@ jobs:
             cat "${{ github.workspace }}/zap-reports/gateway-report.md"
           else
             echo "⚠️ Gateway report not found"
+            echo "Scan log:"
+            cat "${{ github.workspace }}/zap-reports/gateway-scan.log" || echo "No scan log available"
           fi
-          echo ""
 
       - name: ZAP - User Service
+        continue-on-error: true
         run: |
+          echo "🔍 Starting ZAP scan for User Service..."
           docker run --rm \
             --network ${{ steps.network.outputs.network }} \
             -v ${{ github.workspace }}/zap-reports:/zap/wrk/:rw \
-            --user $(id -u):$(id -g) \
+            -u root \
             -t ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
             -t http://user-service:8001 \
             -r user-report.html \
             -J user-report.json \
-            -w user-report.md || true
+            -w user-report.md \
+            -d /zap/wrk \
+            2>&1 | tee ${{ github.workspace }}/zap-reports/user-scan.log
 
       - name: Display User Service Scan Results
         if: always()
@@ -99,21 +140,26 @@ jobs:
             cat "${{ github.workspace }}/zap-reports/user-report.md"
           else
             echo "⚠️ User service report not found"
+            echo "Scan log:"
+            cat "${{ github.workspace }}/zap-reports/user-scan.log" || echo "No scan log available"
           fi
-          echo ""
 
       - name: ZAP - Product Service
+        continue-on-error: true
         run: |
+          echo "🔍 Starting ZAP scan for Product Service..."
           docker run --rm \
             --network ${{ steps.network.outputs.network }} \
             -v ${{ github.workspace }}/zap-reports:/zap/wrk/:rw \
-            --user $(id -u):$(id -g) \
+            -u root \
             -t ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
             -t http://product-service:8002 \
             -r product-report.html \
             -J product-report.json \
-            -w product-report.md || true
+            -w product-report.md \
+            -d /zap/wrk \
+            2>&1 | tee ${{ github.workspace }}/zap-reports/product-scan.log
 
       - name: Display Product Service Scan Results
         if: always()
@@ -123,10 +169,10 @@ jobs:
             cat "${{ github.workspace }}/zap-reports/product-report.md"
           else
             echo "⚠️ Product service report not found"
+            echo "Scan log:"
+            cat "${{ github.workspace }}/zap-reports/product-scan.log" || echo "No scan log available"
           fi
-          echo ""
 
-      # Summary of all findings
       - name: Generate Security Summary
         if: always()
         run: |
@@ -137,7 +183,6 @@ jobs:
             echo "## ${service^} Service" >> $GITHUB_STEP_SUMMARY
             
             if [ -f "${{ github.workspace }}/zap-reports/${service}-report.json" ]; then
-              # Parse JSON to count alerts by risk level
               HIGH=$(jq '[.site[].alerts[] | select(.riskcode=="3")] | length' "${{ github.workspace }}/zap-reports/${service}-report.json" 2>/dev/null || echo "0")
               MEDIUM=$(jq '[.site[].alerts[] | select(.riskcode=="2")] | length' "${{ github.workspace }}/zap-reports/${service}-report.json" 2>/dev/null || echo "0")
               LOW=$(jq '[.site[].alerts[] | select(.riskcode=="1")] | length' "${{ github.workspace }}/zap-reports/${service}-report.json" 2>/dev/null || echo "0")
@@ -147,18 +192,16 @@ jobs:
               echo "- 🟡 Medium: **$MEDIUM**" >> $GITHUB_STEP_SUMMARY
               echo "- 🔵 Low: **$LOW**" >> $GITHUB_STEP_SUMMARY
               echo "- ℹ️ Informational: **$INFO**" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
             else
-              echo "⚠️ No report generated" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "⚠️ No report generated - check scan logs in artifacts" >> $GITHUB_STEP_SUMMARY
             fi
+            echo "" >> $GITHUB_STEP_SUMMARY
           done
 
-      # Verify reports were created
-      - name: List generated reports
+      - name: List all generated files
         if: always()
         run: |
-          echo "Contents of zap-reports directory:"
+          echo "=== All files in zap-reports directory ==="
           ls -lah ${{ github.workspace }}/zap-reports/ || echo "Directory not found or empty"
 
       - name: Upload ZAP Reports
