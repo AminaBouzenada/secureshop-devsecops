@@ -67,6 +67,17 @@ jobs:
             -w gateway-report.md \
             -a || true
 
+      - name: Display Gateway Scan Results
+        if: always()
+        run: |
+          echo "=== API GATEWAY SCAN RESULTS ==="
+          if [ -f "${{ github.workspace }}/zap-reports/gateway-report.md" ]; then
+            cat "${{ github.workspace }}/zap-reports/gateway-report.md"
+          else
+            echo "⚠️ Gateway report not found"
+          fi
+          echo ""
+
       - name: ZAP - User Service
         run: |
           docker run --rm \
@@ -80,6 +91,17 @@ jobs:
             -J user-report.json \
             -w user-report.md || true
 
+      - name: Display User Service Scan Results
+        if: always()
+        run: |
+          echo "=== USER SERVICE SCAN RESULTS ==="
+          if [ -f "${{ github.workspace }}/zap-reports/user-report.md" ]; then
+            cat "${{ github.workspace }}/zap-reports/user-report.md"
+          else
+            echo "⚠️ User service report not found"
+          fi
+          echo ""
+
       - name: ZAP - Product Service
         run: |
           docker run --rm \
@@ -92,6 +114,45 @@ jobs:
             -r product-report.html \
             -J product-report.json \
             -w product-report.md || true
+
+      - name: Display Product Service Scan Results
+        if: always()
+        run: |
+          echo "=== PRODUCT SERVICE SCAN RESULTS ==="
+          if [ -f "${{ github.workspace }}/zap-reports/product-report.md" ]; then
+            cat "${{ github.workspace }}/zap-reports/product-report.md"
+          else
+            echo "⚠️ Product service report not found"
+          fi
+          echo ""
+
+      # Summary of all findings
+      - name: Generate Security Summary
+        if: always()
+        run: |
+          echo "# 🔒 DAST Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          for service in gateway user product; do
+            echo "## ${service^} Service" >> $GITHUB_STEP_SUMMARY
+            
+            if [ -f "${{ github.workspace }}/zap-reports/${service}-report.json" ]; then
+              # Parse JSON to count alerts by risk level
+              HIGH=$(jq '[.site[].alerts[] | select(.riskcode=="3")] | length' "${{ github.workspace }}/zap-reports/${service}-report.json" 2>/dev/null || echo "0")
+              MEDIUM=$(jq '[.site[].alerts[] | select(.riskcode=="2")] | length' "${{ github.workspace }}/zap-reports/${service}-report.json" 2>/dev/null || echo "0")
+              LOW=$(jq '[.site[].alerts[] | select(.riskcode=="1")] | length' "${{ github.workspace }}/zap-reports/${service}-report.json" 2>/dev/null || echo "0")
+              INFO=$(jq '[.site[].alerts[] | select(.riskcode=="0")] | length' "${{ github.workspace }}/zap-reports/${service}-report.json" 2>/dev/null || echo "0")
+              
+              echo "- 🔴 High: **$HIGH**" >> $GITHUB_STEP_SUMMARY
+              echo "- 🟡 Medium: **$MEDIUM**" >> $GITHUB_STEP_SUMMARY
+              echo "- 🔵 Low: **$LOW**" >> $GITHUB_STEP_SUMMARY
+              echo "- ℹ️ Informational: **$INFO**" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "⚠️ No report generated" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
 
       # Verify reports were created
       - name: List generated reports
