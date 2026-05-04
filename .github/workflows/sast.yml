@@ -38,7 +38,7 @@ jobs:
           done
 
       - name: Upload Bandit SARIF - user-service
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: bandit-user-service.sarif
@@ -46,7 +46,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload Bandit SARIF - order-service
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: bandit-order-service.sarif
@@ -71,7 +71,7 @@ jobs:
         run: semgrep scan --config auto --sarif --output semgrep.sarif || true
 
       - name: Upload SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: semgrep.sarif

@@ -39,35 +39,50 @@ jobs:
         continue-on-error: true
 
       # -----------------------------
-      # ZAP SCANS (FIXED)
-      # - Changed artifact_name to use hyphens only (no underscores)
-      # - artifact names: zap-gateway, zap-user, zap-product
+      # ZAP SCANS with manual Docker execution
+      # This bypasses the artifact upload issues in the action
       # -----------------------------
 
       - name: ZAP - API Gateway
-        uses: zaproxy/action-baseline@v0.12.0
-        with:
-          target: 'http://localhost'
-          artifact_name: zap-gateway
-          allow_issue_writing: false
-          cmd_options: '-a'
-        continue-on-error: true
+        run: |
+          docker run --network host \
+            -v $(pwd):/zap/wrk/:rw \
+            -t ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+            -t http://localhost \
+            -r zap-gateway-report.html \
+            -J zap-gateway-report.json \
+            -a || true
 
       - name: ZAP - User Service
-        uses: zaproxy/action-baseline@v0.12.0
-        with:
-          target: 'http://localhost:8001'
-          artifact_name: zap-user
-          allow_issue_writing: false
-        continue-on-error: true
+        run: |
+          docker run --network host \
+            -v $(pwd):/zap/wrk/:rw \
+            -t ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+            -t http://localhost:8001 \
+            -r zap-user-report.html \
+            -J zap-user-report.json || true
 
       - name: ZAP - Product Service
-        uses: zaproxy/action-baseline@v0.12.0
+        run: |
+          docker run --network host \
+            -v $(pwd):/zap/wrk/:rw \
+            -t ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+            -t http://localhost:8002 \
+            -r zap-product-report.html \
+            -J zap-product-report.json || true
+
+      - name: Upload ZAP Reports
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          target: 'http://localhost:8002'
-          artifact_name: zap-product
-          allow_issue_writing: false
-        continue-on-error: true
+          name: zap-reports
+          path: |
+            zap-*-report.html
+            zap-*-report.json
+          retention-days: 30
 
       - name: Stop services
         if: always()
