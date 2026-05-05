@@ -82,6 +82,41 @@ jobs:
             ghcr.io/zaproxy/zaproxy:stable \
             curl -v http://product-service:8002/health 2>&1 || echo "❌ Product service unreachable"
 
+      # -----------------------------------------------------------------------
+      # NEW: Seed a test user and capture a JWT token for authenticated scans
+      # -----------------------------------------------------------------------
+      - name: Seed ZAP test user
+        run: |
+          echo "Creating test user for authenticated ZAP scan..."
+          for i in {1..5}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -X POST http://localhost/api/v1/register \
+              -H "Content-Type: application/json" \
+              -d '{"email":"zap@secureshop.test","password":"ZapTest123!","username":"zapuser"}')
+            if [ "$STATUS" = "200" ] || [ "$STATUS" = "201" ] || [ "$STATUS" = "409" ]; then
+              echo "✅ Test user ready (status: $STATUS)"
+              break
+            fi
+            echo "Attempt $i — status $STATUS, retrying..."
+            sleep 5
+          done
+
+          # Verify login works and capture token
+          TOKEN=$(curl -s -X POST http://localhost/api/v1/login \
+            -H "Content-Type: application/json" \
+            -d '{"email":"zap@secureshop.test","password":"ZapTest123!"}' \
+            | jq -r '.access_token // empty')
+
+          if [ -z "$TOKEN" ]; then
+            echo "⚠️ Could not obtain token — scans will run unauthenticated"
+          else
+            echo "✅ Login successful, token obtained"
+            echo "ZAP_TOKEN=$TOKEN" >> $GITHUB_ENV
+          fi
+
+      # -----------------------------------------------------------------------
+      # Gateway scan — kept as baseline (passive only) until DNS issue is fixed
+      # -----------------------------------------------------------------------
       - name: ZAP - API Gateway
         continue-on-error: true
         run: |
@@ -115,21 +150,29 @@ jobs:
             cat "${{ github.workspace }}/zap-reports/gateway-scan.log" || echo "No scan log available"
           fi
 
+      # -----------------------------------------------------------------------
+      # CHANGED: zap-baseline.py → zap-full-scan.py + auth token injection
+      # -----------------------------------------------------------------------
       - name: ZAP - User Service
         continue-on-error: true
         run: |
-          echo "🔍 Starting ZAP scan for User Service..."
+          echo "🔍 Starting ZAP authenticated full scan for User Service..."
           docker run --rm \
             --network ${{ steps.network.outputs.network }} \
             -v ${{ github.workspace }}/zap-reports:/zap/wrk/:rw \
             -u root \
             -t ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py \
+            zap-full-scan.py \
             -t http://user-service:8001 \
             -r user-report.html \
             -J user-report.json \
             -w user-report.md \
             -d /zap/wrk \
+            -z "-config replacer.full_list(0).description=auth \
+                -config replacer.full_list(0).enabled=true \
+                -config replacer.full_list(0).matchtype=REQ_HEADER \
+                -config replacer.full_list(0).matchstr=Authorization \
+                -config replacer.full_list(0).replacement='Bearer ${{ env.ZAP_TOKEN }}'" \
             2>&1 | tee ${{ github.workspace }}/zap-reports/user-scan.log
 
       - name: Display User Service Scan Results
@@ -144,21 +187,29 @@ jobs:
             cat "${{ github.workspace }}/zap-reports/user-scan.log" || echo "No scan log available"
           fi
 
+      # -----------------------------------------------------------------------
+      # CHANGED: zap-baseline.py → zap-full-scan.py + auth token injection
+      # -----------------------------------------------------------------------
       - name: ZAP - Product Service
         continue-on-error: true
         run: |
-          echo "🔍 Starting ZAP scan for Product Service..."
+          echo "🔍 Starting ZAP authenticated full scan for Product Service..."
           docker run --rm \
             --network ${{ steps.network.outputs.network }} \
             -v ${{ github.workspace }}/zap-reports:/zap/wrk/:rw \
             -u root \
             -t ghcr.io/zaproxy/zaproxy:stable \
-            zap-baseline.py \
+            zap-full-scan.py \
             -t http://product-service:8002 \
             -r product-report.html \
             -J product-report.json \
             -w product-report.md \
             -d /zap/wrk \
+            -z "-config replacer.full_list(0).description=auth \
+                -config replacer.full_list(0).enabled=true \
+                -config replacer.full_list(0).matchtype=REQ_HEADER \
+                -config replacer.full_list(0).matchstr=Authorization \
+                -config replacer.full_list(0).replacement='Bearer ${{ env.ZAP_TOKEN }}'" \
             2>&1 | tee ${{ github.workspace }}/zap-reports/product-scan.log
 
       - name: Display Product Service Scan Results
